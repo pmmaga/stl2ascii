@@ -41,11 +41,10 @@ func main() {
 		os.Exit(1)
 	} else {
 		fmt.Printf("Reading %v\n", cmdArgs[0])
-		aModel := &model.Model{}
-		err = aModel.ReadBinarySTL(fileReader)
+		aModel, err := model.CreateFromBinarySTL(fileReader)
 		check(err)
 		fmt.Printf("Header: %v\n", aModel.Header)
 		fmt.Printf("Triangles: %v\n", aModel.NumTriangles)
-		fmt.Printf("Dimensions: %v\n", model.GetDimensions(aModel))
+		fmt.Printf("Dimensions: %v\n", model.GetDimensions(&aModel))
 	}
 }

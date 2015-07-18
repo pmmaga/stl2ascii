@@ -19,19 +19,19 @@ type Model struct {
 	Triangles    []Triangle
 }
 
-func (m *Model) ReadBinarySTL(r io.Reader) (err error) {
+func CreateFromBinarySTL(r io.Reader) (m Model, err error) {
 	//Read the header
 	byteHeader := make([]byte, 80)
 	_, err = r.Read(byteHeader)
 	if err != nil {
-		return err
+		return m, err
 	}
 
 	m.Header = strings.Trim(string(byteHeader), "\x00")
 	//Read the number of triangles
 	err = binary.Read(r, binary.LittleEndian, &m.NumTriangles)
 	if err != nil {
-		return err
+		return m, err
 	}
 	//Read the triangles
 	for tri := uint32(0); tri < m.NumTriangles; tri++ {
@@ -40,7 +40,7 @@ func (m *Model) ReadBinarySTL(r io.Reader) (err error) {
 		for k := range triangle.normal {
 			err = binary.Read(r, binary.LittleEndian, &triangle.normal[k])
 			if err != nil {
-				return err
+				return m, err
 			}
 		}
 		//Read the vertices
@@ -48,27 +48,27 @@ func (m *Model) ReadBinarySTL(r io.Reader) (err error) {
 			for j := range triangle.vertices[i] {
 				err = binary.Read(r, binary.LittleEndian, &triangle.vertices[i][j])
 				if err != nil {
-					return err
+					return m, err
 				}
 			}
 		}
 		//Read the attribute byte count (which should be 0)
 		err = binary.Read(r, binary.LittleEndian, &triangle.attrByteCount)
 		if err != nil {
-			return err
+			return m, err
 		}
 		//If it isn't skip those bytes
 		if triangle.attrByteCount != uint16(0) {
 			attr := make([]byte, triangle.attrByteCount)
 			err = binary.Read(r, binary.LittleEndian, &attr)
 			if err != nil {
-				return err
+				return m, err
 			}
 		}
 		//Apend the created Triangle to the Model
 		m.Triangles = append(m.Triangles, triangle)
 	}
-	return nil
+	return m, nil
 }
 
 func GetDimensions(m *Model) [3]float32 {
