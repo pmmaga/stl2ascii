@@ -28,6 +28,7 @@ func main() {
 	check(err)
 	defer fileHandle.Close()
 
+	fmt.Printf("Reading %v\n", cmdArgs[0])
 	//Create the reader
 	fileReader := bufio.NewReader(fileHandle)
 
@@ -35,16 +36,16 @@ func main() {
 	asciiCheck, err := fileReader.Peek(5)
 	check(err)
 
+	var aModel model.Model
 	if string(asciiCheck) == "solid" {
-		//And blow up if it is!
-		fmt.Println("ASCII reader not implemented yet")
-		os.Exit(1)
-	} else {
-		fmt.Printf("Reading %v\n", cmdArgs[0])
-		aModel, err := model.CreateFromBinarySTL(fileReader)
+		aModel, err = model.CreateFromASCIISTL(fileReader)
 		check(err)
-		fmt.Printf("Header: %v\n", aModel.Header)
-		fmt.Printf("Triangles: %v\n", aModel.NumTriangles)
-		fmt.Printf("Dimensions: %v\n", model.GetDimensions(&aModel))
+
+	} else {
+		aModel, err = model.CreateFromBinarySTL(fileReader)
+		check(err)
 	}
+
+	//Print the Model
+	fmt.Println(&aModel)
 }

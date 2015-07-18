@@ -1,13 +1,14 @@
 package model
 
 import (
+	"bufio"
 	"encoding/binary"
-	"io"
+	"fmt"
 	"math"
 	"strings"
 )
 
-type Triangle struct {
+type triangle struct {
 	normal        [3]float32
 	vertices      [3][3]float32
 	attrByteCount uint16
@@ -16,10 +17,14 @@ type Triangle struct {
 type Model struct {
 	Header       string
 	NumTriangles uint32
-	Triangles    []Triangle
+	Triangles    []triangle
 }
 
-func CreateFromBinarySTL(r io.Reader) (m Model, err error) {
+func (m *Model) String() string {
+	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\n", m.Header, m.NumTriangles, GetDimensions(m))
+}
+
+func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
 	//Read the header
 	byteHeader := make([]byte, 80)
 	_, err = r.Read(byteHeader)
@@ -35,46 +40,71 @@ func CreateFromBinarySTL(r io.Reader) (m Model, err error) {
 	}
 	//Read the triangles
 	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		var triangle Triangle
+		var aTriangle triangle
 		//Read the normal
-		for k := range triangle.normal {
-			err = binary.Read(r, binary.LittleEndian, &triangle.normal[k])
+		for k := range aTriangle.normal {
+			err = binary.Read(r, binary.LittleEndian, &aTriangle.normal[k])
 			if err != nil {
 				return m, err
 			}
 		}
 		//Read the vertices
-		for i := range triangle.vertices {
-			for j := range triangle.vertices[i] {
-				err = binary.Read(r, binary.LittleEndian, &triangle.vertices[i][j])
+		for i := range aTriangle.vertices {
+			for j := range aTriangle.vertices[i] {
+				err = binary.Read(r, binary.LittleEndian, &aTriangle.vertices[i][j])
 				if err != nil {
 					return m, err
 				}
 			}
 		}
 		//Read the attribute byte count (which should be 0)
-		err = binary.Read(r, binary.LittleEndian, &triangle.attrByteCount)
+		err = binary.Read(r, binary.LittleEndian, &aTriangle.attrByteCount)
 		if err != nil {
 			return m, err
 		}
 		//If it isn't skip those bytes
-		if triangle.attrByteCount != uint16(0) {
-			attr := make([]byte, triangle.attrByteCount)
+		if aTriangle.attrByteCount != uint16(0) {
+			attr := make([]byte, aTriangle.attrByteCount)
 			err = binary.Read(r, binary.LittleEndian, &attr)
 			if err != nil {
 				return m, err
 			}
 		}
 		//Apend the created Triangle to the Model
-		m.Triangles = append(m.Triangles, triangle)
+		m.Triangles = append(m.Triangles, aTriangle)
 	}
 	return m, nil
 }
 
+func CreateFromASCIISTL(r *bufio.Reader) (m Model, err error) {
+	//Create the header
+	header, err := r.ReadBytes('\n')
+	if err != nil {
+		return m, err
+	}
+	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", strings.Trim(string(header[6:]), "\n"))
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil || len(line) < 5 {
+			break
+		}
+		if string(line[:5]) != "facet" {
+			break
+		}
+	}
+
+	return m, nil
+}
+
 func GetDimensions(m *Model) [3]float32 {
+	mins, maxs := getMinsMaxs(m)
+	return [3]float32{maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]}
+}
+
+func getMinsMaxs(m *Model) (mins [3]float32, maxs [3]float32) {
 	//Initialize arrays for min x y z and max x y z
-	mins := [...]float32{math.MaxFloat32, math.MaxFloat32, math.MaxFloat32}
-	maxs := [...]float32{-math.MaxFloat32, -math.MaxFloat32, -math.MaxFloat32}
+	mins = [3]float32{math.MaxFloat32, math.MaxFloat32, math.MaxFloat32}
+	maxs = [3]float32{-math.MaxFloat32, -math.MaxFloat32, -math.MaxFloat32}
 	//Run through the triangles
 	for i := range m.Triangles {
 		//Each vertice
@@ -91,5 +121,5 @@ func GetDimensions(m *Model) [3]float32 {
 			}
 		}
 	}
-	return [3]float32{maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]}
+	return mins, maxs
 }
