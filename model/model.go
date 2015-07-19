@@ -2,6 +2,7 @@ package model
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -22,8 +23,55 @@ type Model struct {
 	Triangles    []triangle
 }
 
+//Stringer function
 func (m *Model) String() string {
-	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\n", m.Header, m.NumTriangles, GetDimensions(m))
+	mins, maxs := getMinsMaxs(m)
+	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\nMins: %v\nMaxs: %v\n", m.Header, m.NumTriangles, getDimensions(m), mins, maxs)
+}
+
+//Project the model in a 100x100 matrix
+func (m *Model) Paint() string {
+	//Get the mins and the dimensions
+	mins, _ := getMinsMaxs(m)
+	dimensions := getDimensions(m)
+	//Adjust the scale based on the model dimensions
+	scale := float32(1)
+	if dimensions[2] > dimensions[0] {
+		scale = dimensions[2] / 100
+	} else {
+		scale = dimensions[0] / 100
+	}
+	//Initialize the output matrix
+	matrix := make([][]byte, 101)
+	for i := range matrix {
+		matrix[i] = make([]byte, 101)
+	}
+	//For each triangle
+	for j := range m.Triangles {
+		//For each vertex
+		for k := range m.Triangles[j].vertices {
+			//Adjust the coordinates by moving them to the positive space and scaling
+			adjustedX, adjustedY := (m.Triangles[j].vertices[k][2]-mins[2])/scale, (m.Triangles[j].vertices[k][0]-mins[0])/scale
+			matrixX, matrixY := int(adjustedX), int(adjustedY)
+			//Mark the vertex in the matrix
+			matrix[100-matrixX][matrixY] = 1
+		}
+	}
+	//Buffer for the output
+	var buffer bytes.Buffer
+	for l := range matrix {
+		for n := range matrix[l] {
+			//Paint each point where a vertex was found
+			if matrix[l][n] == 1 {
+				buffer.WriteString("#")
+			} else {
+				buffer.WriteString(" ")
+			}
+		}
+		//New row
+		buffer.WriteString("\n")
+	}
+	return buffer.String()
 }
 
 func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
@@ -87,7 +135,7 @@ func CreateFromASCIISTL(r *bufio.Reader) (m Model, err error) {
 			return lineParts, err
 		}
 		//Trim tabs, spaces and new line
-		line = strings.Trim(line, " \t\n")
+		line = strings.Trim(line, " \t\n\r")
 		//Check if size is at least the same as param
 		if len(line) < len(mustStartWith) {
 			return lineParts, errors.New("Line shorter than mustStartWith.")
@@ -105,12 +153,12 @@ func CreateFromASCIISTL(r *bufio.Reader) (m Model, err error) {
 		return lineParts, nil
 	}
 	//Read the first line
-	header, err := readAndTreatLine(r, "solid ", " ", 1)
+	header, err := r.ReadString('\n')
 	if err != nil {
 		return m, err
 	}
 	//Create the header with the original solid name
-	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", header[0])
+	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", strings.Trim(string(header[5:]), " \n"))
 	for {
 		var aTriangle triangle
 		//Read the normal
@@ -161,11 +209,13 @@ func CreateFromASCIISTL(r *bufio.Reader) (m Model, err error) {
 	return m, nil
 }
 
-func GetDimensions(m *Model) [3]float32 {
+//Get the size for each dimension
+func getDimensions(m *Model) [3]float32 {
 	mins, maxs := getMinsMaxs(m)
 	return [3]float32{maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]}
 }
 
+//Get the mins and the maxs arrays
 func getMinsMaxs(m *Model) (mins [3]float32, maxs [3]float32) {
 	//Initialize arrays for min x y z and max x y z
 	mins = [3]float32{math.MaxFloat32, math.MaxFloat32, math.MaxFloat32}

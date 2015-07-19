@@ -48,4 +48,5 @@ func main() {
 
 	//Print the Model
 	fmt.Println(&aModel)
+	fmt.Println(aModel.Paint())
 }
