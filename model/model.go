@@ -64,7 +64,7 @@ func (m *Model) Paint(matrixSize int, paintfrom PaintFrom) string {
 		scale = dimensions[projectToY] / float32(matrixSize)
 	}
 	//Initialize the output matrix
-	matrix := make([][]byte, matrixSize+1)
+	matrix := make([][]byte, (matrixSize/2)+1)
 	for i := range matrix {
 		matrix[i] = make([]byte, matrixSize+1)
 	}
@@ -76,7 +76,7 @@ func (m *Model) Paint(matrixSize int, paintfrom PaintFrom) string {
 			adjustedX, adjustedY := (m.Triangles[j].vertices[k][projectToX]-mins[projectToX])/scale, (m.Triangles[j].vertices[k][projectToY]-mins[projectToY])/scale
 			matrixX, matrixY := int(adjustedX), int(adjustedY)
 			//Mark the vertex in the matrix
-			matrix[matrixSize-matrixX][matrixY] = 1
+			matrix[(matrixSize-matrixX)/2][matrixY] = 1
 		}
 	}
 	//Buffer for the output
