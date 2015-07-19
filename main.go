@@ -48,5 +48,5 @@ func main() {
 
 	//Print the Model
 	fmt.Println(&aModel)
-	fmt.Println(aModel.Paint())
+	fmt.Println(aModel.Paint(100, model.PaintFromFront))
 }

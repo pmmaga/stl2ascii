@@ -29,32 +29,54 @@ func (m *Model) String() string {
 	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\nMins: %v\nMaxs: %v\n", m.Header, m.NumTriangles, getDimensions(m), mins, maxs)
 }
 
-//Project the model in a 100x100 matrix
-func (m *Model) Paint() string {
+//PaintFrom constant to define which coordinate to ignore
+type PaintFrom int
+
+const (
+	PaintFromSide PaintFrom = iota
+	PaintFromFront
+	PaintFromTop
+)
+
+//Project the model in a matrixSize x matrixSize matrix from the paint perspective
+func (m *Model) Paint(matrixSize int, paintfrom PaintFrom) string {
+	//Define the perspective
+	var projectToX, projectToY int
+	switch paintfrom {
+	case PaintFromSide:
+		projectToX = 2
+		projectToY = 1
+	case PaintFromFront:
+		projectToX = 2
+		projectToY = 0
+	case PaintFromTop:
+		projectToX = 1
+		projectToY = 0
+	}
 	//Get the mins and the dimensions
 	mins, _ := getMinsMaxs(m)
 	dimensions := getDimensions(m)
 	//Adjust the scale based on the model dimensions
 	scale := float32(1)
-	if dimensions[2] > dimensions[0] {
-		scale = dimensions[2] / 100
+	if dimensions[projectToX] > dimensions[projectToY] {
+		scale = dimensions[projectToX] / float32(matrixSize)
 	} else {
-		scale = dimensions[0] / 100
+		scale = dimensions[projectToY] / float32(matrixSize)
 	}
 	//Initialize the output matrix
-	matrix := make([][]byte, 101)
+	matrix := make([][]byte, matrixSize+1)
 	for i := range matrix {
-		matrix[i] = make([]byte, 101)
+		matrix[i] = make([]byte, matrixSize+1)
 	}
 	//For each triangle
 	for j := range m.Triangles {
 		//For each vertex
 		for k := range m.Triangles[j].vertices {
 			//Adjust the coordinates by moving them to the positive space and scaling
-			adjustedX, adjustedY := (m.Triangles[j].vertices[k][2]-mins[2])/scale, (m.Triangles[j].vertices[k][0]-mins[0])/scale
+			adjustedX, adjustedY := (m.Triangles[j].vertices[k][projectToX]-mins[projectToX])/scale, (m.Triangles[j].vertices[k][projectToY]-mins[projectToY])/scale
 			matrixX, matrixY := int(adjustedX), int(adjustedY)
 			//Mark the vertex in the matrix
-			matrix[100-matrixX][matrixY] = 1
+			matrix[matrixSize-matrixX][matrixY] = 1
 		}
 	}
 	//Buffer for the output
