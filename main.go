@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 
 	"bitbucket.org/pmmaga/gostl/model"
 )
@@ -14,20 +15,24 @@ func check(e error) {
 	}
 }
 
+func usage() {
+	fmt.Println("usage: gostl [info|paint] [front|side|top size] [pathtostl]")
+	os.Exit(1)
+}
+
 func main() {
 	//Read the arguments
 	cmdArgs := os.Args[1:]
-	//If the number of arguments is not right, explode!
-	if len(cmdArgs) != 1 {
-		fmt.Println("You need to pass the name of the STL file.")
-		os.Exit(1)
+	//If the number of arguments is enough, show usage
+	if len(cmdArgs) < 2 {
+		usage()
 	}
 
 	//Open the passed file for reading
-	fileHandle, err := os.Open(cmdArgs[0])
+	fileHandle, err := os.Open(cmdArgs[len(cmdArgs)-1])
 	check(err)
 	defer fileHandle.Close()
-	fmt.Printf("Reading %v\n", cmdArgs[0])
+	fmt.Printf("Reading %v\n", cmdArgs[len(cmdArgs)-1])
 
 	//Create the reader
 	fileReader := bufio.NewReader(fileHandle)
@@ -46,7 +51,30 @@ func main() {
 		check(err)
 	}
 
-	//Print the Model
-	fmt.Println(&aModel)
-	fmt.Println(aModel.Paint(100, model.PaintFromFront))
+	switch cmdArgs[0] {
+	case "info":
+		//Print the Model Info
+		fmt.Println(&aModel)
+	case "paint":
+		//Check the perspective and size params
+		var perspective model.PaintFrom
+		switch cmdArgs[1] {
+		case "front":
+			perspective = model.PaintFromFront
+		case "side":
+			perspective = model.PaintFromSide
+		case "top":
+			perspective = model.PaintFromTop
+		default:
+			usage()
+		}
+		size, err := strconv.ParseInt(cmdArgs[2], 10, 0)
+		if err != nil {
+			usage()
+		}
+		//Paint the model
+		fmt.Println(aModel.Paint(int(size), perspective))
+	default:
+		usage()
+	}
 }

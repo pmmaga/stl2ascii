@@ -29,7 +29,7 @@ func (m *Model) String() string {
 	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\nMins: %v\nMaxs: %v\n", m.Header, m.NumTriangles, getDimensions(m), mins, maxs)
 }
 
-//PaintFrom constant to define which coordinate to ignore
+//PaintFrom constant to define the Paint perspective
 type PaintFrom int
 
 const (
