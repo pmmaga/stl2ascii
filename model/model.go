@@ -3,8 +3,10 @@ package model
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -77,20 +79,83 @@ func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
 }
 
 func CreateFromASCIISTL(r *bufio.Reader) (m Model, err error) {
-	//Create the header
-	header, err := r.ReadBytes('\n')
+	// Function to treat each line. receives the reader ,the expected starting string, the parts splitters and the number of expected parts after splitting
+	readAndTreatLine := func(r *bufio.Reader, mustStartWith string, partSplitters string, expectedPartsLength int) (lineParts []string, err error) {
+		//Read a line
+		line, err := r.ReadString('\n')
+		if err != nil {
+			return lineParts, err
+		}
+		//Trim tabs, spaces and new line
+		line = strings.Trim(line, " \t\n")
+		//Check if size is at least the same as param
+		if len(line) < len(mustStartWith) {
+			return lineParts, errors.New("Line shorter than mustStartWith.")
+		}
+		//Check if it starts as expected
+		if line[:len(mustStartWith)] != mustStartWith {
+			return lineParts, errors.New("Line different from mustStartWith.")
+		}
+		line = line[len(mustStartWith):]
+		lineParts = strings.Split(line, partSplitters)
+		if len(lineParts) != expectedPartsLength {
+			return lineParts, errors.New("Number of line parts different from expected")
+		}
+		//Return the line
+		return lineParts, nil
+	}
+	//Read the first line
+	header, err := readAndTreatLine(r, "solid ", " ", 1)
 	if err != nil {
 		return m, err
 	}
-	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", strings.Trim(string(header[6:]), "\n"))
+	//Create the header with the original solid name
+	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", header[0])
 	for {
-		line, err := r.ReadBytes('\n')
-		if err != nil || len(line) < 5 {
+		var aTriangle triangle
+		//Read the normal
+		normalParts, err := readAndTreatLine(r, "facet normal ", " ", 3)
+		if err != nil {
 			break
 		}
-		if string(line[:5]) != "facet" {
-			break
+		for i := range aTriangle.normal {
+			parsedFloat, err := strconv.ParseFloat(normalParts[i], 32)
+			if err != nil {
+				return m, err
+			}
+			aTriangle.normal[i] = float32(parsedFloat)
 		}
+		//Read outer loop
+		_, err = readAndTreatLine(r, "outer loop", "", 0)
+		if err != nil {
+			return m, err
+		}
+		//Read the vertices
+		for j := range aTriangle.vertices {
+			vertexParts, err := readAndTreatLine(r, "vertex ", " ", 3)
+			if err != nil {
+				return m, err
+			}
+			for k := range aTriangle.vertices[j] {
+				parsedFloat, err := strconv.ParseFloat(vertexParts[k], 32)
+				if err != nil {
+					return m, err
+				}
+				aTriangle.vertices[j][k] = float32(parsedFloat)
+			}
+		}
+		//Read endloop
+		_, err = readAndTreatLine(r, "endloop", "", 0)
+		if err != nil {
+			return m, err
+		}
+		//Read endfacet
+		_, err = readAndTreatLine(r, "endfacet", "", 0)
+		if err != nil {
+			return m, err
+		}
+		m.Triangles = append(m.Triangles, aTriangle)
+		m.NumTriangles++
 	}
 
 	return m, nil

@@ -27,8 +27,8 @@ func main() {
 	fileHandle, err := os.Open(cmdArgs[0])
 	check(err)
 	defer fileHandle.Close()
-
 	fmt.Printf("Reading %v\n", cmdArgs[0])
+
 	//Create the reader
 	fileReader := bufio.NewReader(fileHandle)
 
