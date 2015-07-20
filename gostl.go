@@ -42,11 +42,12 @@ func main() {
 	check(err)
 
 	var aModel model.Model
+	//Try ASCII if it looks like it
 	if string(asciiCheck) == "solid" {
-		aModel, err = model.CreateFromASCIISTL(fileReader)
-		check(err)
-
-	} else {
+		aModel, _ = model.CreateFromASCIISTL(fileReader)
+	}
+	//If it failed, try binary
+	if len(aModel.Triangles) == 0 {
 		aModel, err = model.CreateFromBinarySTL(fileReader)
 		check(err)
 	}
@@ -57,14 +58,14 @@ func main() {
 		fmt.Println(&aModel)
 	case "paint":
 		//Check the perspective and size params
-		var perspective model.PaintFrom
+		var perspective model.ProjectFrom
 		switch cmdArgs[1] {
 		case "front":
-			perspective = model.PaintFromFront
+			perspective = model.ProjectFromFront
 		case "side":
-			perspective = model.PaintFromSide
+			perspective = model.ProjectFromSide
 		case "top":
-			perspective = model.PaintFromTop
+			perspective = model.ProjectFromTop
 		default:
 			usage()
 		}
@@ -73,7 +74,7 @@ func main() {
 			usage()
 		}
 		//Paint the model
-		fmt.Println(aModel.Paint(int(size), perspective))
+		fmt.Println(model.DrawMatrix(model.ProjectModelVertices(&aModel, int(size), perspective)))
 	default:
 		usage()
 	}

@@ -23,39 +23,46 @@ type Model struct {
 	Triangles    []triangle
 }
 
-//Stringer function
+//Stringer method
 func (m *Model) String() string {
 	mins, maxs := getMinsMaxs(m)
 	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\nMins: %v\nMaxs: %v\n", m.Header, m.NumTriangles, getDimensions(m), mins, maxs)
 }
 
-//PaintFrom constant to define the Paint perspective
-type PaintFrom int
+//ProjectFrom constant to define the Paint perspective
+type ProjectFrom int
 
 const (
-	PaintFromSide PaintFrom = iota
-	PaintFromFront
-	PaintFromTop
+	ProjectFromSide ProjectFrom = iota
+	ProjectFromFront
+	ProjectFromTop
 )
 
-//Project the model in a matrixSize x matrixSize matrix from the paint perspective
-func (m *Model) Paint(matrixSize int, paintfrom PaintFrom) string {
-	//Define the perspective
-	var projectToX, projectToY int
-	switch paintfrom {
-	case PaintFromSide:
-		projectToX = 2
-		projectToY = 1
-	case PaintFromFront:
-		projectToX = 2
-		projectToY = 0
-	case PaintFromTop:
-		projectToX = 1
-		projectToY = 0
+func (p ProjectFrom) GetAxisForProjection() (forX int, forY int, forValue int) {
+	switch p {
+	case ProjectFromSide:
+		forX = 2
+		forY = 1
+		forValue = 0
+	case ProjectFromFront:
+		forX = 2
+		forY = 0
+		forValue = 1
+	case ProjectFromTop:
+		forX = 1
+		forY = 0
+		forValue = 2
 	}
+	return forX, forY, forValue
+}
+
+//Project the model in a matrixSize x matrixSize matrix from the chosen perspective
+func ProjectModelVertices(m *Model, matrixSize int, projectFrom ProjectFrom) [][]float32 {
+	//Define the perspective
+	projectToX, projectToY, projectToValue := projectFrom.GetAxisForProjection()
 	//Get the mins and the dimensions
-	mins, _ := getMinsMaxs(m)
-	dimensions := getDimensions(m)
+	mins, maxs := getMinsMaxs(m)
+	dimensions := [3]float32{maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]}
 	//Adjust the scale based on the model dimensions
 	scale := float32(1)
 	if dimensions[projectToX] > dimensions[projectToY] {
@@ -64,9 +71,9 @@ func (m *Model) Paint(matrixSize int, paintfrom PaintFrom) string {
 		scale = dimensions[projectToY] / float32(matrixSize)
 	}
 	//Initialize the output matrix
-	matrix := make([][]byte, (matrixSize/2)+1)
+	matrix := make([][]float32, (matrixSize/2)+1)
 	for i := range matrix {
-		matrix[i] = make([]byte, matrixSize+1)
+		matrix[i] = make([]float32, matrixSize+1)
 	}
 	//For each triangle
 	for j := range m.Triangles {
@@ -76,15 +83,23 @@ func (m *Model) Paint(matrixSize int, paintfrom PaintFrom) string {
 			adjustedX, adjustedY := (m.Triangles[j].vertices[k][projectToX]-mins[projectToX])/scale, (m.Triangles[j].vertices[k][projectToY]-mins[projectToY])/scale
 			matrixX, matrixY := int(adjustedX), int(adjustedY)
 			//Mark the vertex in the matrix
-			matrix[(matrixSize-matrixX)/2][matrixY] = 1
+			newValue := m.Triangles[j].vertices[k][projectToValue] - mins[projectToValue]
+			if newValue > matrix[(matrixSize-matrixX)/2][matrixY] {
+				matrix[(matrixSize-matrixX)/2][matrixY] = newValue
+			}
 		}
 	}
+	return matrix
+}
+
+//Draw a matrix with different characters for the value axis
+func DrawMatrix(matrix [][]float32) string {
 	//Buffer for the output
 	var buffer bytes.Buffer
-	for l := range matrix {
-		for n := range matrix[l] {
+	for i := range matrix {
+		for j := range matrix[i] {
 			//Paint each point where a vertex was found
-			if matrix[l][n] == 1 {
+			if matrix[i][j] > 0 {
 				buffer.WriteString("#")
 			} else {
 				buffer.WriteString(" ")
