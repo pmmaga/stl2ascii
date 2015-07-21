@@ -26,7 +26,8 @@ type Model struct {
 //Stringer method
 func (m *Model) String() string {
 	mins, maxs := getMinsMaxs(m)
-	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\nMins: %v\nMaxs: %v\n", m.Header, m.NumTriangles, getDimensions(m), mins, maxs)
+	dimensions := [3]float32{maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2]}
+	return fmt.Sprintf("Header: %v\nTriangles: %v\nDimensions: %v\nMins: %v\nMaxs: %v\n", m.Header, m.NumTriangles, dimensions, mins, maxs)
 }
 
 //ProjectFrom constant to define the Paint perspective
@@ -111,7 +112,80 @@ func DrawMatrix(matrix [][]float32) string {
 	return buffer.String()
 }
 
+func CreateFromByteSlice(byteSlice []byte) (m Model, err error) {
+	createTriangle := func(startPos uint32, done chan<- int) {
+		var aTriangle triangle
+		//Read the normal
+		for k := range aTriangle.normal {
+			bits := binary.LittleEndian.Uint32(byteSlice[startPos : startPos+4])
+			aTriangle.normal[k] = math.Float32frombits(bits)
+			startPos = startPos + 4
+		}
+		//Read the vertices
+		for i := range aTriangle.vertices {
+			for j := range aTriangle.vertices[i] {
+				bits := binary.LittleEndian.Uint32(byteSlice[startPos : startPos+4])
+				aTriangle.vertices[i][j] = math.Float32frombits(bits)
+				startPos = startPos + 4
+			}
+		}
+		aTriangle.attrByteCount = binary.LittleEndian.Uint16(byteSlice[startPos : startPos+2])
+		m.Triangles = append(m.Triangles, aTriangle)
+		done <- 1
+	}
+
+	//Read the header
+	m.Header = strings.Trim(string(byteSlice[:80]), "\x00")
+	//Read the number of triangles
+	m.NumTriangles = binary.LittleEndian.Uint32(byteSlice[80:84])
+	//Read the triangles
+	done := make(chan int, m.NumTriangles)
+	for tri := uint32(0); tri < m.NumTriangles; tri++ {
+		go createTriangle(84+(tri*50), done)
+	}
+	for tri := uint32(0); tri < m.NumTriangles; tri++ {
+		//Wait for all to be done
+		<-done
+	}
+	return m, nil
+}
+
 func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
+	createTriangle := func(done chan<- int) {
+		var aTriangle triangle
+		//Read the normal
+		for k := range aTriangle.normal {
+			err = binary.Read(r, binary.LittleEndian, &aTriangle.normal[k])
+			if err != nil {
+				done <- 1
+			}
+		}
+		//Read the vertices
+		for i := range aTriangle.vertices {
+			for j := range aTriangle.vertices[i] {
+				err = binary.Read(r, binary.LittleEndian, &aTriangle.vertices[i][j])
+				if err != nil {
+					done <- 1
+				}
+			}
+		}
+		//Read the attribute byte count (which should be 0)
+		err = binary.Read(r, binary.LittleEndian, &aTriangle.attrByteCount)
+		if err != nil {
+			done <- 1
+		}
+		//If it isn't skip those bytes
+		if aTriangle.attrByteCount != uint16(0) {
+			attr := make([]byte, aTriangle.attrByteCount)
+			err = binary.Read(r, binary.LittleEndian, &attr)
+			if err != nil {
+				done <- 1
+			}
+		}
+		m.Triangles = append(m.Triangles, aTriangle)
+		done <- 1
+	}
+
 	//Read the header
 	byteHeader := make([]byte, 80)
 	_, err = r.Read(byteHeader)
@@ -126,39 +200,13 @@ func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
 		return m, err
 	}
 	//Read the triangles
+	done := make(chan int, m.NumTriangles)
 	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		var aTriangle triangle
-		//Read the normal
-		for k := range aTriangle.normal {
-			err = binary.Read(r, binary.LittleEndian, &aTriangle.normal[k])
-			if err != nil {
-				return m, err
-			}
-		}
-		//Read the vertices
-		for i := range aTriangle.vertices {
-			for j := range aTriangle.vertices[i] {
-				err = binary.Read(r, binary.LittleEndian, &aTriangle.vertices[i][j])
-				if err != nil {
-					return m, err
-				}
-			}
-		}
-		//Read the attribute byte count (which should be 0)
-		err = binary.Read(r, binary.LittleEndian, &aTriangle.attrByteCount)
-		if err != nil {
-			return m, err
-		}
-		//If it isn't skip those bytes
-		if aTriangle.attrByteCount != uint16(0) {
-			attr := make([]byte, aTriangle.attrByteCount)
-			err = binary.Read(r, binary.LittleEndian, &attr)
-			if err != nil {
-				return m, err
-			}
-		}
-		//Apend the created Triangle to the Model
-		m.Triangles = append(m.Triangles, aTriangle)
+		go createTriangle(done)
+	}
+	for tri := uint32(0); tri < m.NumTriangles; tri++ {
+		//Wait for all to be done
+		<-done
 	}
 	return m, nil
 }
