@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"runtime/pprof"
 	"strconv"
 
 	"bitbucket.org/pmmaga/gostl/model"
@@ -16,50 +19,92 @@ func check(e error) {
 }
 
 func usage() {
-	fmt.Println("usage: gostl [info|paint] [front|side|top size] [pathtostl]")
+	fmt.Println("usage: gostl [flags] [pathtofile]")
+	flag.PrintDefaults()
 	os.Exit(1)
 }
 
+var (
+	// Command Flag Declaration
+	info = flag.Bool("info", true, "Print gathered information about the file")
+	draw = flag.Bool("draw", false, "Draw the model from a direction on a size x size grid (draw [front|side|top] size)")
+
+	// Option Flags
+	preLoad = flag.Bool("pl", false, "Preload the file into memory (binary STL only)")
+
+	// Debugging
+	cpuprofile = flag.String("cpuprofile", "", "Write cpu profile to this file")
+)
+
 func main() {
-	//Read the arguments
-	cmdArgs := os.Args[1:]
-	//If the number of arguments is enough, show usage
-	if len(cmdArgs) < 2 {
-		usage()
+	//Read the flags
+	flag.Usage = usage
+	flag.Parse()
+
+	//Create a CPU profile for debugging
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "creating cpu profile: %s\n", err)
+			check(err)
+		}
+		defer f.Close()
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
 
-	//Open the passed file for reading
-	fileHandle, err := os.Open(cmdArgs[len(cmdArgs)-1])
-	check(err)
-	defer fileHandle.Close()
-	fmt.Printf("Reading %v\n", cmdArgs[len(cmdArgs)-1])
-
-	//Create the reader
-	fileReader := bufio.NewReader(fileHandle)
-
-	//Check if it is ASCII
-	asciiCheck, err := fileReader.Peek(5)
-	check(err)
-
+	//Create the model
 	var aModel model.Model
-	//Try ASCII if it looks like it
-	if string(asciiCheck) == "solid" {
-		aModel, _ = model.CreateFromASCIISTL(fileReader)
-	}
-	//If it failed, try binary
-	if len(aModel.Triangles) == 0 {
-		aModel, err = model.CreateFromBinarySTL(fileReader)
+
+	//File path
+	filePath := flag.Arg(flag.NArg() - 1)
+
+	//If we want to preload the model in memory
+	if *preLoad {
+		fmt.Printf("Loading %s\n", filePath)
+		//Load the whole file to memory
+		fileSlice, err := ioutil.ReadFile(filePath)
 		check(err)
+		//Create the model from it
+		aModel, err = model.CreateFromByteSlice(fileSlice)
+		check(err)
+	} else {
+		//Open the passed file for reading
+		fileHandle, err := os.Open(filePath)
+		check(err)
+		defer fileHandle.Close()
+
+		//Create the reader
+		fileReader := bufio.NewReader(fileHandle)
+
+		//Check if it is ASCII
+		asciiCheck, err := fileReader.Peek(5)
+		check(err)
+
+		//Try ASCII if it looks like it
+		if string(asciiCheck) == "solid" {
+			//Discard the error so we try binary if this fails
+			aModel, _ = model.CreateFromASCIISTL(fileReader)
+		}
+		//If it failed, try binary
+		if len(aModel.Triangles) == 0 {
+			aModel, err = model.CreateFromBinarySTL(fileReader)
+			check(err)
+		}
 	}
 
-	switch cmdArgs[0] {
-	case "info":
+	if *info {
 		//Print the Model Info
 		fmt.Println(&aModel)
-	case "paint":
+	}
+
+	if *draw {
+		if flag.NArg() != 3 {
+			usage()
+		}
 		//Check the perspective and size params
 		var perspective model.ProjectFrom
-		switch cmdArgs[1] {
+		switch flag.Arg(0) {
 		case "front":
 			perspective = model.ProjectFromFront
 		case "side":
@@ -69,13 +114,11 @@ func main() {
 		default:
 			usage()
 		}
-		size, err := strconv.ParseInt(cmdArgs[2], 10, 0)
+		size, err := strconv.ParseInt(flag.Arg(1), 10, 0)
 		if err != nil {
 			usage()
 		}
 		//Paint the model
 		fmt.Println(model.DrawMatrix(model.ProjectModelVertices(&aModel, int(size), perspective)))
-	default:
-		usage()
 	}
 }
