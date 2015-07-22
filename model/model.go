@@ -113,7 +113,7 @@ func DrawMatrix(matrix [][]float32) string {
 }
 
 func CreateFromByteSlice(byteSlice []byte) (m Model, err error) {
-	createTriangle := func(startPos uint32, done chan<- int) {
+	createTriangle := func(startPos uint32) {
 		var aTriangle triangle
 		//Read the normal
 		for k := range aTriangle.normal {
@@ -131,7 +131,6 @@ func CreateFromByteSlice(byteSlice []byte) (m Model, err error) {
 		}
 		aTriangle.attrByteCount = binary.LittleEndian.Uint16(byteSlice[startPos : startPos+2])
 		m.Triangles = append(m.Triangles, aTriangle)
-		done <- 1
 	}
 
 	//Read the header
@@ -139,25 +138,20 @@ func CreateFromByteSlice(byteSlice []byte) (m Model, err error) {
 	//Read the number of triangles
 	m.NumTriangles = binary.LittleEndian.Uint32(byteSlice[80:84])
 	//Read the triangles
-	done := make(chan int, m.NumTriangles)
 	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		go createTriangle(84+(tri*50), done)
-	}
-	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		//Wait for all to be done
-		<-done
+		createTriangle(84 + (tri * 50))
 	}
 	return m, nil
 }
 
 func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
-	createTriangle := func(done chan<- int) {
+	createTriangle := func() (err error) {
 		var aTriangle triangle
 		//Read the normal
 		for k := range aTriangle.normal {
 			err = binary.Read(r, binary.LittleEndian, &aTriangle.normal[k])
 			if err != nil {
-				done <- 1
+				return err
 			}
 		}
 		//Read the vertices
@@ -165,25 +159,17 @@ func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
 			for j := range aTriangle.vertices[i] {
 				err = binary.Read(r, binary.LittleEndian, &aTriangle.vertices[i][j])
 				if err != nil {
-					done <- 1
+					return err
 				}
 			}
 		}
 		//Read the attribute byte count (which should be 0)
 		err = binary.Read(r, binary.LittleEndian, &aTriangle.attrByteCount)
 		if err != nil {
-			done <- 1
-		}
-		//If it isn't skip those bytes
-		if aTriangle.attrByteCount != uint16(0) {
-			attr := make([]byte, aTriangle.attrByteCount)
-			err = binary.Read(r, binary.LittleEndian, &attr)
-			if err != nil {
-				done <- 1
-			}
+			return err
 		}
 		m.Triangles = append(m.Triangles, aTriangle)
-		done <- 1
+		return nil
 	}
 
 	//Read the header
@@ -200,13 +186,11 @@ func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
 		return m, err
 	}
 	//Read the triangles
-	done := make(chan int, m.NumTriangles)
 	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		go createTriangle(done)
-	}
-	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		//Wait for all to be done
-		<-done
+		err = createTriangle()
+		if err != nil {
+			return m, err
+		}
 	}
 	return m, nil
 }

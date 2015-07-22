@@ -53,6 +53,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	//for runs := 0; runs < 50; runs++ {
+
 	//Create the model
 	var aModel model.Model
 
@@ -88,6 +90,12 @@ func main() {
 		}
 		//If it failed, try binary
 		if len(aModel.Triangles) == 0 {
+			//Reset the reader in case it tried ASCII
+			if string(asciiCheck) == "solid" {
+				fileHandle.Seek(0, 0)
+				fileReader = bufio.NewReader(fileHandle)
+			}
+			//Read the Binary STL
 			aModel, err = model.CreateFromBinarySTL(fileReader)
 			check(err)
 		}
@@ -121,4 +129,5 @@ func main() {
 		//Paint the model
 		fmt.Println(model.DrawMatrix(model.ProjectModelVertices(&aModel, int(size), perspective)))
 	}
+	// }
 }
