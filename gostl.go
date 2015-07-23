@@ -63,7 +63,6 @@ func main() {
 
 	//If we want to preload the model in memory
 	if *preLoad {
-		fmt.Printf("Loading %s\n", filePath)
 		//Load the whole file to memory
 		fileSlice, err := ioutil.ReadFile(filePath)
 		check(err)
@@ -77,7 +76,7 @@ func main() {
 		defer fileHandle.Close()
 
 		//Create the reader
-		fileReader := bufio.NewReader(fileHandle)
+		fileReader := bufio.NewReaderSize(fileHandle, 50*1000)
 
 		//Check if it is ASCII
 		asciiCheck, err := fileReader.Peek(5)

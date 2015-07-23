@@ -6,21 +6,22 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"strings"
 )
 
-type triangle struct {
-	normal        [3]float32
-	vertices      [3][3]float32
-	attrByteCount uint16
+type Triangle struct {
+	Normal        [3]float32
+	Vertices      [3][3]float32
+	AttrByteCount uint16
 }
 
 type Model struct {
 	Header       string
 	NumTriangles uint32
-	Triangles    []triangle
+	Triangles    []Triangle
 }
 
 //Stringer method
@@ -76,15 +77,15 @@ func ProjectModelVertices(m *Model, matrixSize int, projectFrom ProjectFrom) [][
 	for i := range matrix {
 		matrix[i] = make([]float32, matrixSize+1)
 	}
-	//For each triangle
+	//For each Triangle
 	for j := range m.Triangles {
 		//For each vertex
-		for k := range m.Triangles[j].vertices {
+		for k := range m.Triangles[j].Vertices {
 			//Adjust the coordinates by moving them to the positive space and scaling
-			adjustedX, adjustedY := (m.Triangles[j].vertices[k][projectToX]-mins[projectToX])/scale, (m.Triangles[j].vertices[k][projectToY]-mins[projectToY])/scale
+			adjustedX, adjustedY := (m.Triangles[j].Vertices[k][projectToX]-mins[projectToX])/scale, (m.Triangles[j].Vertices[k][projectToY]-mins[projectToY])/scale
 			matrixX, matrixY := int(adjustedX), int(adjustedY)
 			//Mark the vertex in the matrix
-			newValue := m.Triangles[j].vertices[k][projectToValue] - mins[projectToValue]
+			newValue := m.Triangles[j].Vertices[k][projectToValue] - mins[projectToValue]
 			if newValue > matrix[(matrixSize-matrixX)/2][matrixY] {
 				matrix[(matrixSize-matrixX)/2][matrixY] = newValue
 			}
@@ -113,84 +114,35 @@ func DrawMatrix(matrix [][]float32) string {
 }
 
 func CreateFromByteSlice(byteSlice []byte) (m Model, err error) {
-	createTriangle := func(startPos uint32) {
-		var aTriangle triangle
-		//Read the normal
-		for k := range aTriangle.normal {
-			bits := binary.LittleEndian.Uint32(byteSlice[startPos : startPos+4])
-			aTriangle.normal[k] = math.Float32frombits(bits)
-			startPos = startPos + 4
-		}
-		//Read the vertices
-		for i := range aTriangle.vertices {
-			for j := range aTriangle.vertices[i] {
-				bits := binary.LittleEndian.Uint32(byteSlice[startPos : startPos+4])
-				aTriangle.vertices[i][j] = math.Float32frombits(bits)
-				startPos = startPos + 4
-			}
-		}
-		aTriangle.attrByteCount = binary.LittleEndian.Uint16(byteSlice[startPos : startPos+2])
-		m.Triangles = append(m.Triangles, aTriangle)
-	}
-
-	//Read the header
+	//Read the Header
 	m.Header = strings.Trim(string(byteSlice[:80]), "\x00")
-	//Read the number of triangles
+	//Read the number of Triangles
 	m.NumTriangles = binary.LittleEndian.Uint32(byteSlice[80:84])
-	//Read the triangles
-	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		createTriangle(84 + (tri * 50))
+	//Read the Triangles
+	m.Triangles = make([]Triangle, m.NumTriangles)
+	buf := bytes.NewReader(byteSlice[84:])
+	err = binary.Read(buf, binary.LittleEndian, &m.Triangles)
+	if err != nil {
+		return m, err
 	}
 	return m, nil
 }
 
-func CreateFromBinarySTL(r *bufio.Reader) (m Model, err error) {
-	createTriangle := func() (err error) {
-		var aTriangle triangle
-		//Read the normal
-		for k := range aTriangle.normal {
-			err = binary.Read(r, binary.LittleEndian, &aTriangle.normal[k])
-			if err != nil {
-				return err
-			}
-		}
-		//Read the vertices
-		for i := range aTriangle.vertices {
-			for j := range aTriangle.vertices[i] {
-				err = binary.Read(r, binary.LittleEndian, &aTriangle.vertices[i][j])
-				if err != nil {
-					return err
-				}
-			}
-		}
-		//Read the attribute byte count (which should be 0)
-		err = binary.Read(r, binary.LittleEndian, &aTriangle.attrByteCount)
-		if err != nil {
-			return err
-		}
-		m.Triangles = append(m.Triangles, aTriangle)
-		return nil
-	}
-
-	//Read the header
-	byteHeader := make([]byte, 80)
-	_, err = r.Read(byteHeader)
+func CreateFromBinarySTL(r io.Reader) (m Model, err error) {
+	//Read the Header and Number of Triangles
+	header := make([]byte, 84)
+	_, err = io.ReadFull(r, header)
 	if err != nil {
 		return m, err
 	}
+	m.Header = strings.Trim(string(header[:80]), "\x00")
+	m.NumTriangles = binary.LittleEndian.Uint32(header[80:84])
 
-	m.Header = strings.Trim(string(byteHeader), "\x00")
-	//Read the number of triangles
-	err = binary.Read(r, binary.LittleEndian, &m.NumTriangles)
+	//Allocate space for the triangles
+	m.Triangles = make([]Triangle, m.NumTriangles)
+	err = binary.Read(r, binary.LittleEndian, &m.Triangles)
 	if err != nil {
 		return m, err
-	}
-	//Read the triangles
-	for tri := uint32(0); tri < m.NumTriangles; tri++ {
-		err = createTriangle()
-		if err != nil {
-			return m, err
-		}
 	}
 	return m, nil
 }
@@ -222,43 +174,43 @@ func CreateFromASCIISTL(r *bufio.Reader) (m Model, err error) {
 		return lineParts, nil
 	}
 	//Read the first line
-	header, err := r.ReadString('\n')
+	Header, err := r.ReadString('\n')
 	if err != nil {
 		return m, err
 	}
-	//Create the header with the original solid name
-	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", strings.Trim(string(header[5:]), " \n"))
+	//Create the Header with the original solid name
+	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", strings.Trim(string(Header[5:]), " \n"))
 	for {
-		var aTriangle triangle
+		var aTriangle Triangle
 		//Read the normal
 		normalParts, err := readAndTreatLine(r, "facet normal ", " ", 3)
 		if err != nil {
 			break
 		}
-		for i := range aTriangle.normal {
+		for i := range aTriangle.Normal {
 			parsedFloat, err := strconv.ParseFloat(normalParts[i], 32)
 			if err != nil {
 				return m, err
 			}
-			aTriangle.normal[i] = float32(parsedFloat)
+			aTriangle.Normal[i] = float32(parsedFloat)
 		}
 		//Read outer loop
 		_, err = readAndTreatLine(r, "outer loop", "", 0)
 		if err != nil {
 			return m, err
 		}
-		//Read the vertices
-		for j := range aTriangle.vertices {
+		//Read the Vertices
+		for j := range aTriangle.Vertices {
 			vertexParts, err := readAndTreatLine(r, "vertex ", " ", 3)
 			if err != nil {
 				return m, err
 			}
-			for k := range aTriangle.vertices[j] {
+			for k := range aTriangle.Vertices[j] {
 				parsedFloat, err := strconv.ParseFloat(vertexParts[k], 32)
 				if err != nil {
 					return m, err
 				}
-				aTriangle.vertices[j][k] = float32(parsedFloat)
+				aTriangle.Vertices[j][k] = float32(parsedFloat)
 			}
 		}
 		//Read endloop
@@ -289,18 +241,18 @@ func getMinsMaxs(m *Model) (mins [3]float32, maxs [3]float32) {
 	//Initialize arrays for min x y z and max x y z
 	mins = [3]float32{math.MaxFloat32, math.MaxFloat32, math.MaxFloat32}
 	maxs = [3]float32{-math.MaxFloat32, -math.MaxFloat32, -math.MaxFloat32}
-	//Run through the triangles
+	//Run through the Triangles
 	for i := range m.Triangles {
 		//Each vertice
-		for j := range m.Triangles[i].vertices {
+		for j := range m.Triangles[i].Vertices {
 			//Each coordinate
-			for k := range m.Triangles[i].vertices[j] {
+			for k := range m.Triangles[i].Vertices[j] {
 				//Update min and max
-				if m.Triangles[i].vertices[j][k] < mins[k] {
-					mins[k] = m.Triangles[i].vertices[j][k]
+				if m.Triangles[i].Vertices[j][k] < mins[k] {
+					mins[k] = m.Triangles[i].Vertices[j][k]
 				}
-				if m.Triangles[i].vertices[j][k] > maxs[k] {
-					maxs[k] = m.Triangles[i].vertices[j][k]
+				if m.Triangles[i].Vertices[j][k] > maxs[k] {
+					maxs[k] = m.Triangles[i].Vertices[j][k]
 				}
 			}
 		}
