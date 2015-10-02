@@ -72,7 +72,7 @@ func ProjectModelVertices(m *Model, matrixSize int, projectFrom ProjectFrom) [][
 	} else {
 		scale = dimensions[projectToY] / float32(matrixSize)
 	}
-	//Initialize the output matrix
+	//Initialize the output matrix (Y is half the size to compensate for terminal line height)
 	matrix := make([][]float32, (matrixSize/2)+1)
 	for i := range matrix {
 		matrix[i] = make([]float32, matrixSize+1)
@@ -85,7 +85,7 @@ func ProjectModelVertices(m *Model, matrixSize int, projectFrom ProjectFrom) [][
 			adjustedX, adjustedY := (m.Triangles[j].Vertices[k][projectToX]-mins[projectToX])/scale, (m.Triangles[j].Vertices[k][projectToY]-mins[projectToY])/scale
 			matrixX, matrixY := int(adjustedX), int(adjustedY)
 			//Mark the vertex in the matrix
-			newValue := m.Triangles[j].Vertices[k][projectToValue] - mins[projectToValue]
+			newValue := (m.Triangles[j].Vertices[k][projectToValue] - mins[projectToValue]) / dimensions[projectToValue]
 			if newValue > matrix[(matrixSize-matrixX)/2][matrixY] {
 				matrix[(matrixSize-matrixX)/2][matrixY] = newValue
 			}
@@ -101,15 +101,21 @@ func DrawMatrix(matrix [][]float32) string {
 	for i := range matrix {
 		for j := range matrix[i] {
 			//Paint each point where a vertex was found
-			if matrix[i][j] > 0 {
-				buffer.WriteString("#")
-			} else {
+			switch adjVal := matrix[i][j] * 4; {
+			case adjVal > 3:
+				buffer.WriteString("▓")
+			case adjVal > 1.5:
+				buffer.WriteString("▒")
+			case adjVal > 0:
+				buffer.WriteString("░")
+			default:
 				buffer.WriteString(" ")
 			}
 		}
 		//New row
 		buffer.WriteString("\n")
 	}
+	//fmt.Printf("%v\n", matrix)
 	return buffer.String()
 }
 
