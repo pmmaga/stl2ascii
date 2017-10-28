@@ -9,7 +9,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 
-	"bitbucket.org/pmmaga/gostl/model"
+	"github.com/pmmaga/gostl/model"
 )
 
 func check(e error) {
@@ -26,8 +26,8 @@ func usage() {
 
 var (
 	// Command Flag Declaration
-	info = flag.Bool("info", true, "Print gathered information about the file")
-	draw = flag.Bool("draw", false, "Draw the model from a direction on a size x size grid (draw [front|side|top] size)")
+	info = flag.Bool("i", true, "Print gathered information about the file")
+	draw = flag.Bool("d", true, "Draw the model from a direction on a size x size grid (-d [front|side|top] size)")
 
 	// Option Flags
 	preLoad = flag.Bool("pl", false, "Preload the file into memory (binary STL only)")
@@ -60,6 +60,9 @@ func main() {
 
 	//File path
 	filePath := flag.Arg(flag.NArg() - 1)
+	if filePath == "" {
+		usage()
+	}
 
 	//If we want to preload the model in memory
 	if *preLoad {
@@ -106,24 +109,29 @@ func main() {
 	}
 
 	if *draw {
-		if flag.NArg() != 3 {
-			usage()
-		}
-		//Check the perspective and size params
 		var perspective model.ProjectFrom
-		switch flag.Arg(0) {
-		case "front":
+		var size int64
+
+		if flag.NArg() == 1 {
 			perspective = model.ProjectFromFront
-		case "side":
-			perspective = model.ProjectFromSide
-		case "top":
-			perspective = model.ProjectFromTop
-		default:
-			usage()
-		}
-		size, err := strconv.ParseInt(flag.Arg(1), 10, 0)
-		if err != nil {
-			usage()
+			size = 160
+		} else {
+			//Check the perspective and size params
+			switch flag.Arg(0) {
+			case "front":
+				perspective = model.ProjectFromFront
+			case "side":
+				perspective = model.ProjectFromSide
+			case "top":
+				perspective = model.ProjectFromTop
+			default:
+				usage()
+			}
+			var err error
+			size, err = strconv.ParseInt(flag.Arg(1), 10, 0)
+			if err != nil {
+				usage()
+			}
 		}
 		//Paint the model
 		fmt.Println(model.DrawMatrix(model.ProjectModelVertices(&aModel, int(size), perspective)))
