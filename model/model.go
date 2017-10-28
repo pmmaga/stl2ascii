@@ -185,7 +185,7 @@ func CreateFromASCIISTL(r *bufio.Reader) (m Model, err error) {
 		return m, err
 	}
 	//Create the Header with the original solid name
-	m.Header = fmt.Sprintf("Imported from ASCII STL by gostl - %v", strings.Trim(string(Header[5:]), " \n"))
+	m.Header = fmt.Sprintf("Imported from ASCII STL by stl2ascii - %v", strings.Trim(string(Header[5:]), " \n"))
 	for {
 		var aTriangle Triangle
 		//Read the normal

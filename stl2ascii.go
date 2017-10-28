@@ -9,7 +9,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 
-	"github.com/pmmaga/gostl/model"
+	"github.com/pmmaga/stl2ascii/model"
 )
 
 func check(e error) {
@@ -19,7 +19,7 @@ func check(e error) {
 }
 
 func usage() {
-	fmt.Println("usage: gostl [flags] [pathtofile]")
+	fmt.Println("usage: stl2ascii [flags] [pathtofile]")
 	flag.PrintDefaults()
 	os.Exit(1)
 }
